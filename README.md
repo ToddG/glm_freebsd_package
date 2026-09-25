@@ -193,7 +193,7 @@ value = "/tmp/example_temp_dir"
 Copy this makefile to ~/apps/APPNAME/Makefile
 
 ```make
-all: format check build shipment test
+all: format check build shipment test package
 
 .PHONY:format
 format:
@@ -214,6 +214,10 @@ build:
 .PHONY:shipment
 shipment:
 	gleam export erlang-shipment
+
+.PHONY:package
+package:
+    glm_freebsd_package
 
 ```
 

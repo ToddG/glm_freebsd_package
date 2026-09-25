@@ -1,5 +1,5 @@
 name = "glm_freebsd_package"
-version = "3.0.0"
+version = "3.0.1"
 
 description = "CLI tool to package a Gleam app as a FreeBSD package, with a service script."
 licences = ["Apache-2.0"]
