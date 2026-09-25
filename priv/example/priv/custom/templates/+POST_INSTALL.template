@@ -1,37 +1,54 @@
-PKG_NAME="{{ app_name }}"
+APP_NAME="{{ app_name }}"
+PKG_USER="{{ pkg_user_name }}"
+{{#if pkg_root_dir_defined }}
+PKG_ROOT_DIR="{{ pkg_root_dir }}"
+{{/if}}
+
+echo "===> POST INSTALL for ${APP_NAME}"
+
+if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
+  echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
+  PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
+else
+  echo "=> using unmodified '/usr/sbin/pw'...."
+  PW=/usr/sbin/pw
+fi
+
+if ! ${PW} groupshow ${PKG_USER} >/dev/null 2>&1; then
+  echo "===> creating group: ${PKG_USER}"
+  ${PW} groupadd ${PKG_USER} -g {{ pkg_user_uid }}
+else
+  echo "=> using existing group: '${PKG_USER}'."
+fi
+
+if ! ${PW} usershow ${PKG_USER} >/dev/null 2>&1; then
+  echo "===> creating user: ${PKG_USER}"
+  ${PW} useradd ${PKG_USER} -u {{ pkg_user_uid }} -g ${PKG_USER} -c "${APP_NAME} user" -d /nonexistent -s /usr/sbin/nologin
+else
+  echo "=> using existing user: '${PKG_USER}'."
+fi
+
+
+# --------------------------------------------------------------------------------------
+# CUSTOM CONFIG
+# --------------------------------------------------------------------------------------
+# NOTE: this is just an example to show how to write a custom
+# NOTE: template and inject custom key/values into it. as
+# NOTE: mentioned in the readme, its' recommended that you use
+# NOTE: 12-factor techniques. so writing an config file from
+# NOTE: the installer isn't really recommended. it's just a quick
+# NOTE: way to show how to use this feature.
+
 CONFIG_DIR="{{ pkg_config_dir }}"
 CONFIG_FILE="${CONFIG_DIR}/{{ pkg_env_file }}.CUSTOM"
 CUSTOM_TEMP_DIR="{{ pair_custom_temp_dir }}"
+VALUE1={{ pair_key1 }}
+VALUE2={{ pair_key2 }}
 
 mkdir -p ${CUSTOM_TEMP_DIR}
 touch ${CUSTOM_TEMP_DIR}/dummyfile.txt
 
-PKG_USER="{{ pkg_user_name }}"
 
-if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
-  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
-else
-  PW=/usr/sbin/pw
-fi
-
-echo "===> Creating user."
-if ! ${PW} groupshow ${PKG_USER} >/dev/null 2>&1; then
-  echo "Group: '${PKG_USER}'."
-  ${PW} groupadd ${PKG_USER} -g {{ pkg_user_uid }}
-else
-  echo "Using existing group: '${PKG_USER}'."
-fi
-
-if ! ${PW} usershow ${PKG_USER} >/dev/null 2>&1; then
-  echo "User: '${PKG_USER}'."
-  ${PW} useradd ${PKG_USER} -u {{ pkg_user_uid }} -g ${PKG_USER} -c "${PKG_NAME} user" -d /nonexistent -s /usr/sbin/nologin
-else
-  echo "Using existing user: '${PKG_USER}'."
-fi
-
-# --------------------------------------------------------------------------------------
-# MORE CUSTOM STUFF HERE
-# --------------------------------------------------------------------------------------
 if [ ! -f $CONFIG_FILE ]
 then
   echo "===> Creating CUSTOM CONFIG dir ${CONFIG_DIR}"
@@ -40,7 +57,7 @@ then
   echo "# ${PKG_NAME} CUSTOM CONFIG FILE" > $CONFIG_FILE
   echo 'FOO="bar"' >> $CONFIG_FILE
   echo 'BING="bing"' >> $CONFIG_FILE
+  echo "VALUE1=\"${VALUE1}\"" >> $CONFIG_FILE
+  echo "VALUE2=\"${VALUE2}\"" >> $CONFIG_FILE
   chmod 0444 $CONFIG_FILE
 fi
-# key1={{ pair_key1 }}
-# key2={{ pair_key2 }}

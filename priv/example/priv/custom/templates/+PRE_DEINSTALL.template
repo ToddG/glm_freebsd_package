@@ -1,27 +1,40 @@
+APP_NAME="{{ app_name }}"
 PKG_CONFIG_DIR="{{ pkg_config_dir }}"
 PKG_USER_NAME="{{ pkg_user_name }}"
 PKG_VAR_DIR="{{ pkg_var_dir }}"
+{{#if pkg_root_dir_defined }}
+PKG_ROOT_DIR="{{ pkg_root_dir }}"
+{{/if}}
 
-if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
-  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
+echo "===> PRE DEINSTALL of ${APP_NAME}"
+
+if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
+  echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
+  PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
 else
+  echo "=> using unmodified '/usr/sbin/pw'...."
   PW=/usr/sbin/pw
 fi
+
 if ${PW} usershow ${PKG_USER_NAME} >/dev/null 2>&1; then
-  echo "==> pkg user '${PKG_USER_NAME}' should be manually removed."
+  echo "===> pkg user '${PKG_USER_NAME}' will not be automatically removed, manually remove if nec."
   echo "  ${PW} userdel ${PKG_USER_NAME}"
 fi
 
 if [ -d "${PKG_CONFIG_DIR}" ]
 then
-  echo "==> config directory '${PKG_CONFIG_DIR}' should be manually removed."
+  echo "===> config directory '${PKG_CONFIG_DIR}' should be manually removed."
   echo "  rm -rf ${PKG_CONFIG_DIR}"
 fi
 
 if [ -d "${PKG_VAR_DIR}" ]
 then
-  echo "==> run directory '${PKG_VAR_DIR}' should be manually removed."
+  echo "===> run directory '${PKG_VAR_DIR}' should be manually removed."
   echo "  rm -rf ${PKG_VAR_DIR}"
 fi
+
+# --------------------------------------------------------------------------------------
+# CUSTOM CONFIG
+# --------------------------------------------------------------------------------------
 # key1={{ pair_key1 }}
 # key2={{ pair_key2 }}

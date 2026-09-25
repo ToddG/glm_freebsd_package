@@ -45,8 +45,8 @@ freebsd_package:
 	sudo service example stop
 	sudo pkg remove -y example
 
-.PHONY:birdie
-birdie:
+.PHONY:bird
+bird:
 	gleam run -m birdie
 
 .PHONY:install

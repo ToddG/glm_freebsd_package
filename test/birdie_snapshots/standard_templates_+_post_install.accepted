@@ -3,38 +3,31 @@ version: 2.0.0
 title: standard_templates_/+POST_INSTALL
 ---
 APP_NAME="example"
-CONFIG_DIR="/tmp/example"
-CONFIG_FILE="$CONFIG_DIR/example.env"
-PKG_USER_NAME="example"
-PKG_USER_UID="1234"
+PKG_USER="example"
 
-if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
-  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
+
+echo "===> POST INSTALL for ${APP_NAME}"
+
+if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
+  echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
+  PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
 else
+  echo "=> using unmodified '/usr/sbin/pw'...."
   PW=/usr/sbin/pw
 fi
 
-echo "===> Creating user."
 if ! ${PW} groupshow ${PKG_USER} >/dev/null 2>&1; then
-  echo "Group: '${PKG_USER}'."
+  echo "===> creating group: ${PKG_USER}"
   ${PW} groupadd ${PKG_USER} -g 1234
 else
-  echo "Using existing group: '${PKG_USER}'."
+  echo "=> using existing group: '${PKG_USER}'."
 fi
 
 if ! ${PW} usershow ${PKG_USER} >/dev/null 2>&1; then
-  echo "User: '${PKG_USER}'."
+  echo "===> creating user: ${PKG_USER}"
   ${PW} useradd ${PKG_USER} -u 1234 -g ${PKG_USER} -c "${APP_NAME} user" -d /nonexistent -s /usr/sbin/nologin
 else
-  echo "Using existing user: '${PKG_USER}'."
+  echo "=> using existing user: '${PKG_USER}'."
 fi
 
-if [ ! -f $CONFIG_FILE ]
-then
-  echo "===> Creating config in ${CONFIG_FILE}"
-  echo "# ${APP_NAME} config file" > $CONFIG_FILE
-  echo 'FOO="bar"' >> $CONFIG_FILE
-  chmod 0400 $CONFIG_FILE
-  chown PKG_USER:
-fi
 

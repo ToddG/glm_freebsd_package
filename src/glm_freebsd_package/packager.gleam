@@ -1,6 +1,3 @@
-//// BFS - map function across entries first
-//// BFS - now run the search
-
 /// # Package a gleam application into a FreeBSD Package
 ///
 /// ## Design
@@ -28,6 +25,7 @@ import filepath
 import gleam/dict.{type Dict}
 import gleam/io
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import gleam/string_tree
@@ -37,6 +35,8 @@ import handles/error as handles_error
 import shellout
 import simplifile
 import tom.{type Toml}
+
+const pkg_plist = "pkg-plist"
 
 pub type AppError {
   AppError(String)
@@ -163,6 +163,8 @@ pub type Config {
     app_version: String,
     /// Freebsd package user name, used in +POST_INSTALL and rc, defaults to `app_name`.
     pkg_user_name: String,
+    /// Freebsd root directory, used in +POST_INSTALL defaults to not using `-R PKG_ROOT_DIR` in commands using `pw`.
+    pkg_root_dir: Option(String),
     /// Freebsd package user uid, used in +POST_INSTALL and rc, required (no default).
     pkg_user_uid: String,
     /// Freebsd package long description, used in +DESC, required (no default).
@@ -339,6 +341,10 @@ pub fn new_config(toml: Dict(String, Toml)) -> Result(Config, AppError) {
     app_name,
   ))
   use pkg_user_uid <- result.try(get_string(toml, "freebsd.pkg_user_uid"))
+  let pkg_root_dir = case get_string(toml, "freebsd.pkg_root_dir") {
+    Ok(s) -> Some(s)
+    Error(_) -> None
+  }
   use pkg_description <- result.try(get_string(toml, "freebsd.pkg_description"))
   use pkg_maintainer <- result.try(get_string(toml, "freebsd.pkg_maintainer"))
   use pkg_dependencies <- result.try(new_pkg_dependencies(toml))
@@ -433,6 +439,7 @@ pub fn new_config(toml: Dict(String, Toml)) -> Result(Config, AppError) {
       pkg_license_logic:,
       pkg_licenses:,
       pkg_pairs:,
+      pkg_root_dir:,
     )
   Ok(config)
 }
@@ -774,7 +781,7 @@ fn copy_plist_files(
   metadata_dir: String,
   staging_dir: String,
 ) -> Result(List(String), AppError) {
-  let plist_file = filepath.join(metadata_dir, "pkg-plist")
+  let plist_file = filepath.join(metadata_dir, pkg_plist)
   cfg.pkg_plist_lines
   |> list.map(fn(plist_line) {
     case plist_line {
@@ -909,46 +916,61 @@ fn new_context(config: Config) -> ctx.Value {
     config.pkg_pairs
     |> list.map(fn(p) { ctx.Prop("pair_" <> p.key, ctx.Str(p.value)) })
 
-  ctx.Dict(list.append(
-    [
-      ctx.Prop("app_name", ctx.Str(config.app_name)),
-      ctx.Prop("app_version", ctx.Str(config.app_version)),
-      ctx.Prop("pkg_command_args", ctx.Str(config.pkg_command_args)),
-      ctx.Prop("pkg_command", ctx.Str(config.pkg_command)),
-      ctx.Prop("pkg_arch", ctx.Str(config.pkg_arch)),
-      ctx.Prop("pkg_www", ctx.Str(config.pkg_www)),
-      ctx.Prop("pkg_license_logic", ctx.Str(config.pkg_license_logic)),
-      ctx.Prop(
-        "pkg_licenses",
-        config.pkg_licenses
-          |> list.map(fn(x) { "\"" <> x <> "\"" })
-          |> string.join(",")
-          |> ctx.Str,
-      ),
-      ctx.Prop("pkg_comment", ctx.Str(config.pkg_comment)),
-      ctx.Prop(
-        "pkg_app_name_uppercase",
-        ctx.Str(config.app_name |> string.uppercase),
-      ),
-      ctx.Prop("pkg_config_dir", ctx.Str(config.pkg_config_dir)),
-      ctx.Prop("pkg_daemon_flags", ctx.Str(config.pkg_daemon_flags)),
-      ctx.Prop(
-        "pkg_dependencies",
-        dependency_list_from_config(config.pkg_dependencies),
-      ),
-      ctx.Prop("pkg_description", ctx.Str(config.pkg_description)),
-      ctx.Prop("pkg_env_file", ctx.Str(config.pkg_env_file)),
-      ctx.Prop("pkg_maintainer", ctx.Str(config.pkg_maintainer)),
-      ctx.Prop("pkg_origin", ctx.Str(config.pkg_origin)),
-      ctx.Prop("pkg_path_extensions", ctx.Str(config.pkg_path_extensions)),
-      ctx.Prop("pkg_prefix", ctx.Str(config.pkg_prefix)),
-      ctx.Prop("pkg_proc_name", ctx.Str(config.pkg_proc_name)),
-      ctx.Prop("pkg_user_name", ctx.Str(config.pkg_user_name)),
-      ctx.Prop("pkg_user_uid", ctx.Str(config.pkg_user_uid)),
-      ctx.Prop("pkg_var_dir", ctx.Str(config.pkg_var_dir)),
-    ],
-    pairs_prop_list,
-  ))
+  let standard_prop_list = [
+    ctx.Prop("app_name", ctx.Str(config.app_name)),
+    ctx.Prop("app_version", ctx.Str(config.app_version)),
+    ctx.Prop("pkg_command_args", ctx.Str(config.pkg_command_args)),
+    ctx.Prop("pkg_command", ctx.Str(config.pkg_command)),
+    ctx.Prop("pkg_arch", ctx.Str(config.pkg_arch)),
+    ctx.Prop("pkg_www", ctx.Str(config.pkg_www)),
+    ctx.Prop("pkg_license_logic", ctx.Str(config.pkg_license_logic)),
+    ctx.Prop(
+      "pkg_licenses",
+      config.pkg_licenses
+        |> list.map(fn(x) { "\"" <> x <> "\"" })
+        |> string.join(",")
+        |> ctx.Str,
+    ),
+    ctx.Prop("pkg_comment", ctx.Str(config.pkg_comment)),
+    ctx.Prop(
+      "pkg_app_name_uppercase",
+      ctx.Str(config.app_name |> string.uppercase),
+    ),
+    ctx.Prop("pkg_config_dir", ctx.Str(config.pkg_config_dir)),
+    ctx.Prop("pkg_daemon_flags", ctx.Str(config.pkg_daemon_flags)),
+    ctx.Prop(
+      "pkg_dependencies",
+      dependency_list_from_config(config.pkg_dependencies),
+    ),
+    ctx.Prop("pkg_description", ctx.Str(config.pkg_description)),
+    ctx.Prop("pkg_env_file", ctx.Str(config.pkg_env_file)),
+    ctx.Prop("pkg_maintainer", ctx.Str(config.pkg_maintainer)),
+    ctx.Prop("pkg_origin", ctx.Str(config.pkg_origin)),
+    ctx.Prop("pkg_path_extensions", ctx.Str(config.pkg_path_extensions)),
+    ctx.Prop("pkg_prefix", ctx.Str(config.pkg_prefix)),
+    ctx.Prop("pkg_proc_name", ctx.Str(config.pkg_proc_name)),
+    ctx.Prop("pkg_user_name", ctx.Str(config.pkg_user_name)),
+    ctx.Prop("pkg_user_uid", ctx.Str(config.pkg_user_uid)),
+    ctx.Prop("pkg_var_dir", ctx.Str(config.pkg_var_dir)),
+  ]
+
+  let full_prop_list = list.append(pairs_prop_list, standard_prop_list)
+
+  let full_prop_list = case config.pkg_root_dir {
+    Some(root_dir) ->
+      [
+        ctx.Prop("pkg_root_dir", ctx.Str(root_dir)),
+        ctx.Prop("pkg_root_dir_defined", ctx.Bool(True)),
+      ]
+      |> list.append(full_prop_list)
+    _ ->
+      [
+        ctx.Prop("pkg_root_dir_defined", ctx.Bool(False)),
+      ]
+      |> list.append(full_prop_list)
+  }
+
+  ctx.Dict(full_prop_list)
 }
 
 /// Return a list of dependency configs as handles ctx values.
@@ -1056,7 +1078,7 @@ fn new_projected_template_path(
   |> filepath.join(staging_dir, _)
 }
 
-/// Invoke the FreeBSD 'pkg create' command via a shell. This creates the package in output_dir.
+/// Invoke the FreeBSD 'pkg create' command via a shell. This creates the package in the output_dir.
 fn build_package(
   metadata_dir: String,
   staging_dir: String,
@@ -1069,7 +1091,7 @@ fn build_package(
     "-r",
     staging_dir,
     "-p",
-    metadata_dir <> "/pkg-plist",
+    metadata_dir <> "/" <> pkg_plist,
     "-o",
     output_dir,
   ]

@@ -131,6 +131,8 @@ pkg_description = """
     line 04 : multi-line-package description....
     line 05 : multi-line-package description....
     """
+# optional
+# pkg_root_dir = "/some/root/path/for/this/package"
 pkg_maintainer = "package_maintainer@example.com"
 # optional
 pkg_config_dir = "/tmp/example"
