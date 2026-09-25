@@ -1,11 +1,12 @@
 import birdie
 import filepath
+import gleam/erlang/application
 import gleam/list
 import gleam/result
 import gleam/set
 import gleam/string
 import gleeunit
-import glm_freebsd/packager
+import glm_freebsd_package/packager
 import simplifile
 import temporary
 import tom
@@ -13,6 +14,10 @@ import tom
 pub fn main() -> Nil {
   gleeunit.main()
 }
+
+// path to the default templates for things like +POST_INSTALL, etc.
+// pub const default_templates_path = "./priv/templates/freebsd"
+pub const default_templates_path = "templates/freebsd"
 
 pub fn gleam_toml_text() {
   "
@@ -156,6 +161,7 @@ pub fn load_toml_test() {
 }
 
 pub fn gen_staging_test() {
+  let assert Ok(priv_dir) = application.priv_directory("glm_freebsd_package")
   let toml_text = gleam_toml_text()
   let assert Ok(toml_dict) = tom.parse(toml_text)
   let assert Ok(cfg) = packager.new_config(toml_dict)
@@ -180,15 +186,17 @@ pub fn gen_staging_test() {
 
       let staging_dir = filepath.join(temp_dir, "staging")
       let metadata_dir = filepath.join(temp_dir, "metadata")
-      let assert Ok(True) =
-        simplifile.is_directory(packager.default_templates_path)
+      let default_templates_path =
+        filepath.join(priv_dir, default_templates_path)
+      let assert Ok(True) = simplifile.is_directory(default_templates_path)
       let assert Ok(_) =
         packager.gen_staging(
           cfg,
           app_dir,
           metadata_dir,
           staging_dir,
-          packager.default_templates_path,
+          default_templates_path,
+          Error(Nil),
           erlang_shipment_dir,
         )
       // verify that expected files are present
@@ -231,6 +239,7 @@ fn birdie_file_contents(staging_dir: String, f: String, title_prefix: String) {
 
 /// use customized templates
 pub fn gen_custom_templates_test() {
+  let assert Ok(priv_dir) = application.priv_directory("glm_freebsd_package")
   let _ =
     temporary.create(temporary.directory(), fn(temp_dir) {
       // create test resources
@@ -280,13 +289,16 @@ pub fn gen_custom_templates_test() {
       let assert Ok(toml_dict) = tom.parse(toml_text)
       let assert Ok(cfg) = packager.new_config(toml_dict)
       let assert Ok(True) = simplifile.is_directory(custom_templates_dir)
+      let default_templates_path =
+        filepath.join(priv_dir, default_templates_path)
       let assert Ok(_) =
         packager.gen_staging(
           cfg,
           app_dir,
           metadata_dir,
           staging_dir,
-          custom_templates_dir,
+          default_templates_path,
+          custom_templates_dir |> Ok,
           erlang_shipment_dir,
         )
 

@@ -63,10 +63,8 @@ pub type AppError {
   UnableToWriteProjectedTemplate(String, String, simplifile.FileError)
   UnableToCopyPlistFile(String, String, simplifile.FileError)
   UnableToCreateMetadatDir(simplifile.FileError)
+  UnableToListBuiltPackages(#(Int, String))
 }
-
-/// path to the default templates for things like +POST_INSTALL, etc.
-pub const default_templates_path = "./priv/templates/freebsd"
 
 /// use this template to create dependency entries within +MANIFEST deps stanza
 pub const dependency_partial_template = "   {{ dep_name }}: {origin: \"{{ dep_origin }}\", version: \"{{ dep_version }}\"}"
@@ -229,7 +227,8 @@ pub type Config {
 
 pub fn run(
   app_dir: String,
-  templates_dir: String,
+  default_templates_dir: String,
+  user_templates_dir: Result(String, Nil),
   staging_dir: String,
   output_dir: String,
 ) -> Result(String, AppError) {
@@ -238,7 +237,11 @@ pub fn run(
   let erlang_shipment_dir = filepath.join(app_dir, "build/erlang-shipment")
   io.println("packaging...")
   io.println("app_dir: " <> app_dir)
-  io.println("templates_dir: " <> templates_dir)
+  io.println("default_templates_dir: " <> default_templates_dir)
+  let _ = case user_templates_dir {
+    Ok(dir) -> io.println("user_templates_dir: " <> dir)
+    Error(_) -> Nil
+  }
   io.println("metadata_dir: " <> metadata_dir)
   io.println("staging_dir: " <> staging_dir)
   io.println("output_dir: " <> output_dir)
@@ -255,13 +258,15 @@ pub fn run(
     }
     Ok(True) -> Nil
   }
-  let _ = case simplifile.is_directory(templates_dir) {
+  let _ = case simplifile.is_directory(default_templates_dir) {
     Error(e) -> {
       io.println_error(e |> string.inspect)
       panic
     }
     Ok(False) -> {
-      io.println_error("missing templates directory: " <> templates_dir)
+      io.println_error(
+        "missing default templates directory: " <> default_templates_dir,
+      )
       panic
     }
     Ok(True) -> Nil
@@ -303,7 +308,8 @@ pub fn run(
       app_dir,
       metadata_dir,
       staging_dir,
-      templates_dir,
+      default_templates_dir,
+      user_templates_dir,
       erlang_shipment_dir,
     ))
     |> result.try(fn(_) { build_package(metadata_dir, staging_dir, output_dir) })
@@ -311,7 +317,9 @@ pub fn run(
 
 /// Read the `gleam.toml` file and parse it into toml.
 /// Any valid (parsable) toml will succeed here.
-pub fn load_toml(toml_file: String) -> Result(dict.Dict(String, Toml), AppError) {
+pub fn load_toml(
+  toml_file: String,
+) -> Result(dict.Dict(String, Toml), AppError) {
   toml_file
   |> simplifile.read
   |> result.map_error(UnableToReadTomlFile)
@@ -575,7 +583,8 @@ pub fn get_optional_strings(
 /// Generate the templates from the source templates and the config instance, and write into the metadata dir.
 fn gen_templates(
   cfg: Config,
-  templates_dir: String,
+  default_templates_dir: String,
+  user_templates_dir: Result(String, Nil),
   metadata_dir: String,
 ) -> Result(Config, AppError) {
   // templates: create the context for template projection (reification)
@@ -587,6 +596,25 @@ fn gen_templates(
   )
   let partial_templates = [#("dependency", dep_template)]
   // templates: project (reify) the templates into their final form
+  default_templates_dir
+  |> project_templates(context, metadata_dir, partial_templates)
+  |> result.try(fn(_) {
+    case user_templates_dir {
+      Ok(dir) -> {
+        dir |> project_templates(context, metadata_dir, partial_templates)
+      }
+      Error(_) -> Ok([])
+    }
+  })
+  |> result.map(fn(_) { cfg })
+}
+
+fn project_templates(
+  templates_dir: String,
+  context: ctx.Value,
+  metadata_dir: String,
+  partial_templates: List(#(String, handles.Template)),
+) {
   templates_dir
   |> simplifile.get_files
   |> result.map_error(UnableToGetTemplates)
@@ -595,11 +623,13 @@ fn gen_templates(
     |> list.map(project_template(_, context, metadata_dir, partial_templates))
     |> result.all
   })
-  |> result.map(fn(_) { cfg })
 }
 
 /// Write the plist include directive to the plist file.
-fn process_plist_include_directive(plist_file, path) -> Result(String, AppError) {
+fn process_plist_include_directive(
+  plist_file,
+  path,
+) -> Result(String, AppError) {
   let line = "@include " <> path <> "\n"
   simplifile.append(plist_file, line)
   |> result.map_error(UnableToAppendPlistFile(plist_file, line, _))
@@ -779,7 +809,9 @@ fn copy_plist_files(
 }
 
 /// Copy the raw templates to a directory so that the user can modify them for their own purposes.
-pub fn copy_raw_templates(target_dir: String) -> Result(List(String), AppError) {
+pub fn copy_raw_templates(
+  target_dir: String,
+) -> Result(List(String), AppError) {
   simplifile.copy_directory("./priv/templates/freebsd", target_dir)
   |> result.map_error(fn(e) { UnableToCopyTemplatesToDirectory(target_dir, e) })
   |> result.map(fn(_) {
@@ -804,11 +836,12 @@ pub fn gen_staging(
   app_dir: String,
   metadata_dir: String,
   staging_dir: String,
-  templates_dir: String,
+  default_templates_dir: String,
+  user_templates_dir: Result(String, Nil),
   erlang_shipment_dir: String,
 ) -> Result(Nil, AppError) {
   config
-  |> gen_templates(templates_dir, metadata_dir)
+  |> gen_templates(default_templates_dir, user_templates_dir, metadata_dir)
   |> result.try(fn(cfg) { update_config_with_rc_files(cfg, metadata_dir) })
   |> result.try(fn(cfg) {
     update_config_with_erlang_shipment_files(cfg, erlang_shipment_dir)
@@ -1043,4 +1076,9 @@ fn build_package(
   io.println("command: pkg " <> args |> string.join(" "))
   shellout.command(run: "pkg", in: ".", with: args, opt: [])
   |> result.map_error(UnableToBuildPackage)
+  |> result.try(fn(_) {
+    io.println("ls " <> output_dir)
+    shellout.command(run: "/bin/ls", in: ".", with: [output_dir], opt: [])
+    |> result.map_error(UnableToListBuiltPackages)
+  })
 }

@@ -1,4 +1,4 @@
-# glm_freebsd
+# glm_freebsd_package
 
 A Gleam CLI tool that allows you to easily package Gleam Applications as FreeBSD packages. The FreeBSD
 packages install as FreeBSD services, including service scripts to manage the application (e.g. start|stop).
@@ -11,13 +11,13 @@ This tool is inspired by [ex_freebsd](https://github.com/patmaddox/ex_freebsd).
 This is an opinionated tool:
 * gleam apps are converted to FreeBSD services wrapped in FreeBSD packages
 * services run as non-root accounts
-* services use external configuration (following 12 factor principals)
+* services use external configuration, see [12 factor app principals](https://12factor.net/)
 
 Customization is provided via:
 * support for custom templates
 * support for custom key/value pairs
 
-Further documentation can be found at <https://hexdocs.pm/glm_freebsd>.
+Further documentation can be found at <https://hexdocs.pm/glm_freebsd_package>.
 
 ## Quickstart
 
@@ -25,7 +25,7 @@ Further documentation can be found at <https://hexdocs.pm/glm_freebsd>.
  
 * [gleam >= 1.14](https://www.freshports.org/lang/gleam/)
 * [erlang >= erlang28](https://www.freshports.org/lang/erlang-runtime28/)
-* make
+* make // seems to be installed by default
 
 #### Install gleam and erlang
 
@@ -49,21 +49,22 @@ PATH=/usr/local/lib/erlang28/bin:$PATH
 
 ### Install
 
-
 ```bash
-# by default, installs to /usr/local/bin:
-sudo make install
-#
-# or specify an install dir
-sudo make install INSTALL_DIR=/bin
+# GFPTOOL could be '~/bin/gfptool' or any other path you like
+$ export GFPTOOL=~/bin/gfptool
+$ cd ~/bin
+# clone this repo into directory GFPTOOL
+(~/bin) $ git clone git@github.com:ToddG/glm_freebsd_package.git gfptool
+(~/bin) $ cd gfptool
+(~/bin/gfptool) $ make install
+(~/bin/gfptool) $ cd ~
+(~/) $
 ```
 
 ### Help
 
 ```bash
-gleam run -- --help
-   Compiled in 0.05s
-    Running glm_freebsd.main
+(~/) $ glm_freebsd_package --help
 package
 
   package target gleam application as a FreeBSD package with service scripts
@@ -82,16 +83,31 @@ Options:
 ```
 
 
-### Create a new gleam app
+## Tutorial
 
-This gleam app will be packaged as a FreeBSD (service) package...
+### 1. Create a new gleam app
+
+
+Create new gleam app that will subsequently be packaged as a FreeBSD service package:
 
 ```bash
-$ gleam new APPNAME
-$ cd APPNAME
+(~/gfptool) $ cd ~/
+(~/) $ mkdir apps && cd apps
+(~/apps) $ gleam new APPNAME && cd APPNAME
+(~/apps/APPNAME) $ gleam test
 ```
 
-### Update the APPNAME/gleam.toml 
+Init the app as a git repository:
+
+```bash
+(~/apps/APPNAME) $ git init
+(~/apps/APPNAME) $ git remote add origin [your git repo url here]
+(~/apps/APPNAME) $ git add .
+(~/apps/APPNAME) $ git commit -am "initial commit"
+(~/apps/APPNAME) $ git push --set-upstream origin main
+```
+
+### 2. Update the APPNAME/gleam.toml
 
 Add the relevant FreeBSD package info to the ./gleam.toml
 
@@ -172,13 +188,39 @@ key = "custom_temp_dir"
 value = "/tmp/example_temp_dir"
 ```
 
+### Add this Makefile
+
+Copy this makefile to ~/apps/APPNAME/Makefile
+
+```make
+all: format check build shipment test
+
+.PHONY:format
+format:
+	gleam format
+
+.PHONY:check
+check:
+	gleam check
+
+.PHONY:test
+test:
+	gleam "test"
+
+.PHONY:build
+build:
+	gleam build --target erlang
+
+.PHONY:shipment
+shipment:
+	gleam export erlang-shipment
+
+```
+
 ### Create an erlang-shipment
 
 ```bash
-gleam format
-gleam check
-gleam test
-gleam export erlang-shipment
+make
 ```
 
 ### Create a FreeBSD package
@@ -186,44 +228,35 @@ gleam export erlang-shipment
 See the [Makefile](https://github.com/ToddG/glm_freebsd/blob/main/Makefile) for more examples.
 
 ```bash
-# change directories to the glm_freebsd app (this app) so you can run the CLI tool
-cd [glm_freebsd repo directory]
-
 # run this cli tool
-gleam run -- -a [PATH TO YOUR TARGET APP TO PACKAGE] -s [PATH TO A STAGING DIRECTORY] -o [PATH TO AN OUTPUT DIRECTORY TO PUT THE PACKAGE]
+(~/apps/APPNAME) $ glm_freebsd_package
+(~/apps/APPNAME) $ ls packages
+> APPNAME-1.0.0.pkg
 
-# install the generated package 
-sudo pkg install -y [OUTPUT DIR]/[APP_NAME-VERSION].pkg
+# add staging and packages to your .gitignore
+echo "/staging" >> ~/apps/APPNAME/.gitignore
+echo "/packages" >> ~/apps/APPNAME/.gitignore
+
+# install the generated package, note the default VERSION for gleam apps is 1.0.0
+# sudo pkg install -y ~/apps/APPNAME/packages/APPNAME-[VERSION]
+(~/apps/APPNAME) $ sudo pkg install -y ~/apps/APPNAME/packages/APPNAME-1.0.0
+(~/apps/APPNAME) $ sudo pkg install -y ./packages/APPNAME-1.0.0.pkg
 
 # start the service
-sudo service [APP_NAME] start
+(~/apps/APPNAME) $ sudo service APPNAME start
 ```
 
 ### Create a FreeBSD package with custom templates
 
+... same as above, but just add a `-t [some templates directory]` to the glm_freebsd_package command:
+
 ```bash
-```bash
-# change directories to the glm_freebsd app (this app) so you can run the CLI tool
-cd [glm_freebsd repo directory]
-
-# copy the default templates to a directory, typically the `priv` dir in your target app
-cp ./priv/templates/freebsd/* [APP_PATH]/priv/templates
-
-# edit the custom templates in [APP_PATH]/priv/templates
-
-# run the cli tool with the `-t` option to override the location of the templates
-gleam run -- -a [PATH TO YOUR TARGET APP TO PACKAGE] -s [PATH TO A STAGING DIRECTORY] -o [PATH TO AN OUTPUT DIRECTORY TO PUT THE PACKAGE] -t [APP_PATH]/priv/templates
-
-# install the generated package 
-sudo pkg install -y [OUTPUT DIR]/[APP_NAME-VERSION].pkg
-
-# start the service
-sudo service [APP_NAME] start
+(~/apps/APPNAME) $ glm_freebsd_package -t [some templates directory]
 ```
 
 #### Custom Templates and Custom Vars
 
-The reason you can include arbitrary key/value pairs in the gleam.toml file is to support custom templates.
+As mentioned above, arbitrary key/value pairs can be added to the gleam.toml file and referenced by the custom templates.
 
 ```toml
 [[freebsd.pairs]]
@@ -239,18 +272,20 @@ by the runtime.
 
 The location that the service management looks for the configuration file can be configured via these fields in gleam.toml:
 
-       [freebsd]
-       pkg_config_dir=...
-       pkg_env_file=...
+```toml
+[freebsd]
+pkg_config_dir = "some dir"
+pkg_env_file = "some file"
+```
 
-The configuration file can be placed in the correct location by your IAC 
-(infrastructure-as-code, e.g. ansible,chef,puppet,pulumi,terraform,etc.).
+The configuration file can be placed in the correct location by your infrastructure as code (IAC), e.g. ansible, chef, puppet, etc.
 
-When the service manager launches the service, it reads this environment file and includes these environment key/value pairs in the process environment the service instance is started with.
+When the service manager launches the service, it reads this environment file and includes these environment key/value pairs in the
+process environment the service instance is started with.
 
 ## Toml Elements
 
-Package name and version are extracted from the toml here:
+Package name and version are extracted from the top of the toml here:
 ```toml
 name = "example"
 version = "1.0.0"

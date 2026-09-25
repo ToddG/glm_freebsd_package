@@ -1,6 +1,7 @@
 all: format check test build run
 
 INSTALL_DIR := /usr/local/bin
+TEMPLATES_DIR := /usr/local/etc/glm_freebsd_package
 
 .PHONY:path
 path:
@@ -49,5 +50,14 @@ birdie:
 	gleam run -m birdie
 
 .PHONY:install
-install:
-	sudo gleam run -m gleescript -- --out=$(INSTALL_DIR)
+install:build
+	# generate the single file escript, named as the package name in the gleam.toml
+	gleam run -m gleescript -- --out=/tmp
+	# copy the escript to the installation directory, typically /usr/local/bin/glm_freebsd_package
+	sudo cp /tmp/glm_freebsd_package $(INSTALL_DIR)
+	# copy the default templates to a standard location, typically /usr/local/etc/glm_freebsd_package/templates
+	sudo mkdir -p $(TEMPLATES_DIR)
+	sudo cp -rv ./priv/templates $(TEMPLATES_DIR)
+	sudo find /usr/local/etc/glm_freebsd_package -type dir -exec sudo chmod ugo=rx {} \;
+	sudo find /usr/local/etc/glm_freebsd_package -type file -exec sudo chmod ugo=r {} \;
+
