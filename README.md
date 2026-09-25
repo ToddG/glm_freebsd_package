@@ -3,8 +3,8 @@
 A Gleam CLI tool that allows you to easily package Gleam Applications as FreeBSD packages. The FreeBSD
 packages install as FreeBSD services, including service scripts to manage the application (e.g. start|stop).
 
-[![Package Version](https://img.shields.io/hexpm/v/glm_freebsd)](https://hex.pm/packages/glm_freebsd)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/glm_freebsd/)
+[![Package Version](https://img.shields.io/hexpm/v/glm_freebsd_package)](https://hex.pm/packages/glm_freebsd_package)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/glm_freebsd_package/)
 
 This tool is inspired by [ex_freebsd](https://github.com/patmaddox/ex_freebsd).
 
@@ -111,7 +111,7 @@ Init the app as a git repository:
 
 Add the relevant FreeBSD package info to the ./gleam.toml
 
-See [this example gleam.toml](https://github.com/ToddG/glm_freebsd/blob/11baaee2805705182346730b43a31bfb21ad9349/priv/example/gleam.toml#L16).
+See [this example gleam.toml](https://github.com/ToddG/glm_freebsd_package/blob/11baaee2805705182346730b43a31bfb21ad9349/priv/example/gleam.toml#L16).
 
 ```toml
 [freebsd]
@@ -229,7 +229,7 @@ make
 
 ### Create a FreeBSD package
 
-See the [Makefile](https://github.com/ToddG/glm_freebsd/blob/main/Makefile) for more examples.
+See the [Makefile](https://github.com/ToddG/glm_freebsd_package/blob/main/Makefile) for more examples.
 
 ```bash
 # run this cli tool
@@ -295,7 +295,7 @@ name = "example"
 version = "1.0.0"
 ```
 
-The rest of the data comes from the [freebsd] sections. This is fully documented in the [Config type](https://github.com/ToddG/glm_freebsd/blob/11baaee2805705182346730b43a31bfb21ad9349/src/glm_freebsd/packager.gleam#L160-L228):
+The rest of the data comes from the [freebsd] sections. This is fully documented in the [Config type](https://github.com/ToddG/glm_freebsd_package/blob/11baaee2805705182346730b43a31bfb21ad9349/src/glm_freebsd_package/packager.gleam#L160-L228):
 
 ```gleam
 /// Configuration object built from the gleam.toml.
