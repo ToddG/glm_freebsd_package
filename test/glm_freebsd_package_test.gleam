@@ -2,6 +2,7 @@ import birdie
 import filepath
 import gleam/erlang/application
 import gleam/list
+import gleam/option
 import gleam/result
 import gleam/set
 import gleam/string
@@ -115,7 +116,8 @@ pub fn load_toml_test() {
       assert config.app_name == "example"
       assert config.app_version == "1.0.0"
       assert config.pkg_user_name == "example"
-      assert config.pkg_user_uid == "1234"
+      let assert option.Some(uid) = config.pkg_user_uid
+      assert uid == "1234"
       assert config.pkg_description |> string.starts_with("line 01")
       assert config.pkg_maintainer == "package_maintainer@example.com"
       assert config.pkg_config_dir == "/tmp/example"

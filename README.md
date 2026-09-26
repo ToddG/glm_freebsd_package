@@ -25,6 +25,7 @@ Further documentation can be found at <https://hexdocs.pm/glm_freebsd_package>.
  
 * [gleam >= 1.14](https://www.freshports.org/lang/gleam/)
 * [erlang >= erlang28](https://www.freshports.org/lang/erlang-runtime28/)
+* [gleescript](https://github.com/lpil/gleescript) (TODO: replace with `gleam export escript` when 1.17 lands in freebsd)
 * make // seems to be installed by default
 
 #### Install gleam and erlang
@@ -95,6 +96,8 @@ Create new gleam app that will subsequently be packaged as a FreeBSD service pac
 (~/) $ mkdir apps && cd apps
 (~/apps) $ gleam new APPNAME && cd APPNAME
 (~/apps/APPNAME) $ gleam test
+# TODO : replace with instructions to use escript when gleam >= 1.17 is available on freebsd
+(~/apps/APPNAME) $ gleam add gleescript
 ```
 
 Init the app as a git repository:

@@ -6,6 +6,8 @@ PKG_ROOT_DIR="{{ pkg_root_dir }}"
 
 echo "===> POST INSTALL for ${APP_NAME}"
 
+{{# if pkg_user_uid_defined}}
+
 if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
   echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
   PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
@@ -27,7 +29,7 @@ if ! ${PW} usershow ${PKG_USER} >/dev/null 2>&1; then
 else
   echo "=> using existing user: '${PKG_USER}'."
 fi
-
+{{/if}}
 
 # --------------------------------------------------------------------------------------
 # CUSTOM CONFIG

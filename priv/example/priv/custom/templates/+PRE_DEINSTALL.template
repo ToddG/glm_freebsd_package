@@ -8,6 +8,8 @@ PKG_ROOT_DIR="{{ pkg_root_dir }}"
 
 echo "===> PRE DEINSTALL of ${APP_NAME}"
 
+{{# if pkg_user_uid_defined}}
+
 if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
   echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
   PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
@@ -32,6 +34,7 @@ then
   echo "===> run directory '${PKG_VAR_DIR}' should be manually removed."
   echo "  rm -rf ${PKG_VAR_DIR}"
 fi
+{{/if}}
 
 # --------------------------------------------------------------------------------------
 # CUSTOM CONFIG

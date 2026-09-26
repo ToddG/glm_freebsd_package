@@ -5,6 +5,7 @@ import clip/opt.{type Opt}
 import gleam/io
 import gleam/string
 import glm_freebsd_package/packager
+import logging
 
 type App {
   App(
@@ -13,6 +14,7 @@ type App {
     user_templates_dir: Result(String, Nil),
     staging_dir: String,
     output_dir: String,
+    log_level: String,
   )
 }
 
@@ -55,6 +57,13 @@ fn staging_dir_path_opt() -> Opt(String) {
   )
 }
 
+fn log_level() -> Opt(String) {
+  opt.new("log_level")
+  |> opt.short("l")
+  |> opt.default("info")
+  |> opt.help("logging level: [debug|info|warning|error]")
+}
+
 fn command() -> Command(App) {
   clip.command({
     use app_dir <- clip.parameter
@@ -62,6 +71,7 @@ fn command() -> Command(App) {
     use user_templates_dir <- clip.parameter
     use staging_dir <- clip.parameter
     use output_dir <- clip.parameter
+    use log_level <- clip.parameter
 
     App(
       app_dir:,
@@ -69,6 +79,7 @@ fn command() -> Command(App) {
       user_templates_dir:,
       staging_dir:,
       output_dir:,
+      log_level:,
     )
   })
   |> clip.opt(app_dir_path_opt())
@@ -76,6 +87,21 @@ fn command() -> Command(App) {
   |> clip.opt(user_templates_dir_path_opt())
   |> clip.opt(staging_dir_path_opt())
   |> clip.opt(output_dir_path_opt())
+  |> clip.opt(log_level())
+}
+
+fn logging_configure_log_level(level: String) -> Nil {
+  let _ = logging.configure()
+  let level = level |> string.lowercase
+  let logging_level = case level {
+    "debug" -> logging.Debug
+    "info" -> logging.Info
+    "warn" -> logging.Warning
+    "error" -> logging.Error
+    // default to debug logging
+    _ -> logging.Debug
+  }
+  let _ = logging.set_level(logging_level)
 }
 
 pub fn main() -> Nil {
@@ -90,6 +116,7 @@ pub fn main() -> Nil {
   case result {
     Error(e) -> io.println_error(e)
     Ok(app) -> {
+      logging_configure_log_level(app.log_level)
       case
         packager.run(
           app.app_dir,

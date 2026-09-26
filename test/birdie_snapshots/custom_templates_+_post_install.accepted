@@ -8,6 +8,8 @@ PKG_USER="example"
 
 echo "===> POST INSTALL for ${APP_NAME}"
 
+
+
 if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
   echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
   PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
@@ -29,6 +31,7 @@ if ! ${PW} usershow ${PKG_USER} >/dev/null 2>&1; then
 else
   echo "=> using existing user: '${PKG_USER}'."
 fi
+
 
 # key1=value1
 # key2=value2

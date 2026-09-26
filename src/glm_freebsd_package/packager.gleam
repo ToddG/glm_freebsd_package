@@ -23,7 +23,6 @@
 ///
 import filepath
 import gleam/dict.{type Dict}
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -32,6 +31,7 @@ import gleam/string_tree
 import handles
 import handles/ctx
 import handles/error as handles_error
+import logging
 import shellout
 import simplifile
 import tom.{type Toml}
@@ -64,6 +64,22 @@ pub type AppError {
   UnableToCopyPlistFile(String, String, simplifile.FileError)
   UnableToCreateMetadatDir(simplifile.FileError)
   UnableToListBuiltPackages(#(Int, String))
+  UnableToCreatePlistFileDirective(String, simplifile.FileError)
+  MissingGleamTomlFile(String)
+  UnableToCheckForMissingGleamTomlFile(String, simplifile.FileError)
+  MissingDefaultTemplatesDir(String)
+  UnableToCheckForMissingDefaultTemplatesDir(String, simplifile.FileError)
+  MissingErlangShipmentDir(String)
+  UnableToCheckForMissingErlangShipmentDir(String, simplifile.FileError)
+  UnableToCreateDirectory(String, simplifile.FileError)
+  MissingSourceFile(String)
+  UnableToCheckForMissingSourceFile(String, simplifile.FileError)
+  MissingProjectedTemplateDirectory(String)
+  UnableToCheckForMissingProjectedTemplateDirectory(
+    String,
+    simplifile.FileError,
+  )
+  UnableToCreateProjectedTemplateDirectory(String, simplifile.FileError)
 }
 
 /// use this template to create dependency entries within +MANIFEST deps stanza
@@ -101,10 +117,10 @@ pub type ConfigPair {
 /// https://man.freebsd.org/cgi/man.cgi?query=pkg-create
 /// """
 ///       The plist is a  sequential  list	 of  lines  which  can	have  keywords
-///       prepended.   A  keyword	starts with an `@'.  Lines not starting	with a
+///       prepended. A  keyword	starts with an `@'.  Lines not starting	with a
 ///       keyword are considered as paths to a file.  If started with a `/'  then
 ///       it is considered	an absolute path.  Otherwise the file is considered as
-///       relative	to PREFIX.
+///       relative to PREFIX.
 /// """
 ///
 /// Note:
@@ -163,10 +179,11 @@ pub type Config {
     app_version: String,
     /// Freebsd package user name, used in +POST_INSTALL and rc, defaults to `app_name`.
     pkg_user_name: String,
+    /// Freebsd package user uid, used in +POST_INSTALL and rc. If not provided, then no new users
+    /// will be created.
+    pkg_user_uid: Option(String),
     /// Freebsd root directory, used in +POST_INSTALL defaults to not using `-R PKG_ROOT_DIR` in commands using `pw`.
     pkg_root_dir: Option(String),
-    /// Freebsd package user uid, used in +POST_INSTALL and rc, required (no default).
-    pkg_user_uid: String,
     /// Freebsd package long description, used in +DESC, required (no default).
     pkg_description: String,
     /// Freebsd package maintainer email address, used in +MANIFEST, required (no default).
@@ -234,87 +251,63 @@ pub fn run(
   staging_dir: String,
   output_dir: String,
 ) -> Result(String, AppError) {
+  logging.log(logging.Debug, "packaging...")
+  logging.log(logging.Debug, "app_dir: " <> app_dir)
+  logging.log(logging.Debug, "default_templates_dir: " <> default_templates_dir)
   let metadata_dir = filepath.join(staging_dir, "metadata")
   let staging_dir = filepath.join(staging_dir, "staging")
   let erlang_shipment_dir = filepath.join(app_dir, "build/erlang-shipment")
-  io.println("packaging...")
-  io.println("app_dir: " <> app_dir)
-  io.println("default_templates_dir: " <> default_templates_dir)
   let _ = case user_templates_dir {
-    Ok(dir) -> io.println("user_templates_dir: " <> dir)
+    Ok(dir) -> logging.log(logging.Debug, "user_templates_dir: " <> dir)
     Error(_) -> Nil
   }
-  io.println("metadata_dir: " <> metadata_dir)
-  io.println("staging_dir: " <> staging_dir)
-  io.println("output_dir: " <> output_dir)
-  io.println("erlang_shipment_dir: " <> erlang_shipment_dir)
+  logging.log(logging.Debug, "metadata_dir: " <> metadata_dir)
+  logging.log(logging.Debug, "staging_dir: " <> staging_dir)
+  logging.log(logging.Debug, "output_dir: " <> output_dir)
+  logging.log(logging.Debug, "erlang_shipment_dir: " <> erlang_shipment_dir)
   let toml_file = filepath.join(app_dir, "gleam.toml")
-  let _ = case simplifile.is_file(toml_file) {
-    Error(e) -> {
-      io.println_error(e |> string.inspect)
-      panic
-    }
-    Ok(False) -> {
-      io.println_error("missing gleam.toml file: " <> toml_file)
-      panic
-    }
-    Ok(True) -> Nil
-  }
-  let _ = case simplifile.is_directory(default_templates_dir) {
-    Error(e) -> {
-      io.println_error(e |> string.inspect)
-      panic
-    }
-    Ok(False) -> {
-      io.println_error(
-        "missing default templates directory: " <> default_templates_dir,
-      )
-      panic
-    }
-    Ok(True) -> Nil
-  }
-  let _ = case simplifile.is_directory(erlang_shipment_dir) {
-    Error(e) -> {
-      io.println_error(
-        "missing erlang shipment dir: "
-        <> erlang_shipment_dir
-        <> ", error: "
-        <> e |> string.inspect,
-      )
-      panic
-    }
-    Ok(False) -> {
-      io.println_error("missing erlang shipment dir: " <> erlang_shipment_dir)
-      panic
-    }
-    _ -> Nil
-  }
-  let _ =
-    staging_dir
+  use _ <- result.try(case simplifile.is_file(toml_file) {
+    Ok(True) -> Nil |> Ok
+    Ok(False) -> Error(MissingGleamTomlFile(toml_file))
+    Error(e) -> Error(UnableToCheckForMissingGleamTomlFile(toml_file, e))
+  })
+  use _ <- result.try(case simplifile.is_directory(default_templates_dir) {
+    Ok(True) -> Nil |> Ok
+    Ok(False) -> Error(MissingDefaultTemplatesDir(default_templates_dir))
+    Error(e) ->
+      Error(UnableToCheckForMissingDefaultTemplatesDir(default_templates_dir, e))
+  })
+  use _ <- result.try(case simplifile.is_directory(erlang_shipment_dir) {
+    Ok(True) -> Nil |> Ok
+    Ok(False) -> Error(MissingErlangShipmentDir(erlang_shipment_dir))
+    Error(e) ->
+      Error(UnableToCheckForMissingErlangShipmentDir(erlang_shipment_dir, e))
+  })
+  staging_dir
+  |> simplifile.create_directory_all
+  |> result.map_error(UnableToCreateStagingDir)
+  |> result.try(fn(_) {
+    output_dir
     |> simplifile.create_directory_all
-    |> result.map_error(UnableToCreateStagingDir)
-    |> result.try(fn(_) {
-      output_dir
-      |> simplifile.create_directory_all
-      |> result.map_error(UnableToCreateOutputDir)
-    })
-    |> result.try(fn(_) {
-      metadata_dir
-      |> simplifile.create_directory_all
-      |> result.map_error(UnableToCreateMetadatDir)
-    })
-    |> result.try(fn(_) { toml_file |> load_toml })
-    |> result.try(new_config)
-    |> result.try(gen_staging(
-      _,
-      app_dir,
-      metadata_dir,
-      staging_dir,
-      default_templates_dir,
-      user_templates_dir,
-      erlang_shipment_dir,
-    ))
-    |> result.try(fn(_) { build_package(metadata_dir, staging_dir, output_dir) })
+    |> result.map_error(UnableToCreateOutputDir)
+  })
+  |> result.try(fn(_) {
+    metadata_dir
+    |> simplifile.create_directory_all
+    |> result.map_error(UnableToCreateMetadatDir)
+  })
+  |> result.try(fn(_) { toml_file |> load_toml })
+  |> result.try(new_config)
+  |> result.try(gen_staging(
+    _,
+    app_dir,
+    metadata_dir,
+    staging_dir,
+    default_templates_dir,
+    user_templates_dir,
+    erlang_shipment_dir,
+  ))
+  |> result.try(fn(_) { build_package(metadata_dir, staging_dir, output_dir) })
 }
 
 /// Read the `gleam.toml` file and parse it into toml.
@@ -331,7 +324,7 @@ pub fn load_toml(
 }
 
 /// Extract the values from the provided toml dict and generate a Config instance.
-/// If any of the required Config fields are not present, this function will fail.
+/// If any of the required fields are not present in the toml, this function will fail.
 pub fn new_config(toml: Dict(String, Toml)) -> Result(Config, AppError) {
   use app_name <- result.try(get_string(toml, "name"))
   use app_version <- result.try(get_string(toml, "version"))
@@ -340,7 +333,10 @@ pub fn new_config(toml: Dict(String, Toml)) -> Result(Config, AppError) {
     "freebsd.pkg_user_name",
     app_name,
   ))
-  use pkg_user_uid <- result.try(get_string(toml, "freebsd.pkg_user_uid"))
+  use pkg_user_uid <- result.try(case get_string(toml, "freebsd.pkg_user_uid") {
+    Ok(uid) -> uid |> Some |> Ok
+    Error(_) -> None |> Ok
+  })
   let pkg_root_dir = case get_string(toml, "freebsd.pkg_root_dir") {
     Ok(s) -> Some(s)
     Error(_) -> None
@@ -441,6 +437,7 @@ pub fn new_config(toml: Dict(String, Toml)) -> Result(Config, AppError) {
       pkg_pairs:,
       pkg_root_dir:,
     )
+  logging.log(logging.Debug, config |> string.inspect)
   Ok(config)
 }
 
@@ -460,6 +457,8 @@ fn new_pkg_plist_lines(
             use mode <- result.try(get_string(t, "mode"))
             use owner <- result.try(get_string(t, "owner"))
             use group <- result.try(get_string(t, "group"))
+            let src = src |> normalize_file_path
+            let dest = dest |> normalize_file_path
             Ok(PlistFile(src:, dest:, mode:, owner:, group:))
           }
           "directory" -> {
@@ -468,14 +467,18 @@ fn new_pkg_plist_lines(
             use mode <- result.try(get_string(t, "mode"))
             use owner <- result.try(get_string(t, "owner"))
             use group <- result.try(get_string(t, "group"))
+            let src_dir = src_dir |> normalize_file_path
+            let dest_dir = dest_dir |> normalize_file_path
             Ok(PlistDirectory(src_dir:, dest_dir:, mode:, owner:, group:))
           }
           "dir_directive" -> {
             use path <- result.try(get_string(t, "path"))
+            let path = path |> normalize_file_path
             Ok(PlistDirDirective(path:))
           }
           "include_directive" -> {
             use path <- result.try(get_string(t, "path"))
+            let path = path |> normalize_file_path
             Ok(PlistIncludeDirective(path:))
           }
           _ -> {
@@ -637,18 +640,25 @@ fn process_plist_include_directive(
   plist_file,
   path,
 ) -> Result(String, AppError) {
-  let line = "@include " <> path <> "\n"
-  simplifile.append(plist_file, line)
-  |> result.map_error(UnableToAppendPlistFile(plist_file, line, _))
-  |> result.map(fn(_) { line })
+  let line = "@include " <> path
+  append_string_to_plist(plist_file, line)
 }
 
 /// Write the plist dir directive to the plist file.
 fn process_plist_dir_directive(plist_file, path) -> Result(String, AppError) {
-  let line = "@dir " <> path <> "\n"
-  simplifile.append(plist_file, line)
-  |> result.map_error(UnableToAppendPlistFile(plist_file, line, _))
-  |> result.map(fn(_) { line })
+  let line = "@dir " <> path
+  append_string_to_plist(plist_file, line)
+}
+
+fn normalize_file_path(path: String) -> String {
+  case path |> string.starts_with("/"), path |> string.starts_with("./") {
+    // absolute path
+    True, _ -> path
+    // relative path, but strip off the './' b/c `pkg` doesn't recognize these paths in the generated plist file
+    _, True -> path |> string.drop_start(2) |> normalize_file_path
+    // relative path
+    _, _ -> path
+  }
 }
 
 /// Copy the plist file to the staging directory, and append an entry to the plist file.
@@ -662,57 +672,70 @@ fn process_plist_file_directive(
   owner,
   group,
 ) -> Result(String, AppError) {
+  logging.log(logging.Debug, "process_plist_file_directive")
+  logging.log(logging.Debug, "app_dir: " <> app_dir)
+  logging.log(logging.Debug, "staging_dir: " <> staging_dir)
+  logging.log(logging.Debug, "plist_file: " <> plist_file)
+  logging.log(logging.Debug, "src: " <> src)
+  logging.log(logging.Debug, "dest: " <> dest)
+  logging.log(logging.Debug, "mode: " <> mode)
+  logging.log(logging.Debug, "owner: " <> owner)
+  logging.log(logging.Debug, "group: " <> group)
   let target_path = filepath.join(staging_dir, dest)
   let target_path_dir = filepath.directory_name(target_path)
-  let _ = case simplifile.create_directory_all(target_path_dir) {
-    Error(simplifile.Eexist) -> {
-      Ok(Nil)
-    }
-    Ok(_) -> {
-      Ok(Nil)
-    }
-    Error(e) -> {
-      io.println_error(e |> string.inspect)
-      panic
-    }
-  }
+  use _ <- result.try(case simplifile.create_directory_all(target_path_dir) {
+    Ok(_) -> Nil |> Ok
+    Error(e) -> Error(UnableToCreateDirectory(target_path_dir, e))
+  })
   let source_file_path = case filepath.is_absolute(src) {
     True -> src
     False -> filepath.join(app_dir, src)
   }
-  let _ = case simplifile.is_file(source_file_path) {
-    Ok(True) -> {
-      Ok(Nil)
-    }
-    Ok(False) -> {
-      io.println_error("missing source_file: " <> source_file_path)
-      panic
-    }
-    Error(e) -> {
-      io.println_error(e |> string.inspect)
-      panic
-    }
-  }
-  let _ =
-    simplifile.copy_file(source_file_path, target_path)
-    |> result.map_error(UnableToCopyPlistFile(source_file_path, target_path, _))
-    |> result.try(fn(_) {
-      let lines =
-        "@mode "
-        <> mode
-        <> "\n"
-        <> "@owner "
-        <> owner
-        <> "\n"
-        <> "@group "
-        <> group
-        <> "\n"
-        <> dest
-        <> "\n"
-      simplifile.append(plist_file, lines)
-      |> result.map_error(UnableToAppendPlistFile(plist_file, lines, _))
-      |> result.map(fn(_) { lines })
-    })
+  use _ <- result.try(case simplifile.is_file(source_file_path) {
+    Ok(True) -> Nil |> Ok
+    Ok(False) -> Error(MissingSourceFile(source_file_path))
+    Error(e) -> Error(UnableToCheckForMissingSourceFile(source_file_path, e))
+  })
+  simplifile.copy_file(source_file_path, target_path)
+  |> result.map(fn(_) {
+    logging.log(
+      logging.Debug,
+      "copied file src: " <> source_file_path <> ", dest: " <> target_path,
+    )
+  })
+  |> result.map_error(UnableToCopyPlistFile(source_file_path, target_path, _))
+  |> result.try(fn(_) {
+    let lines = [
+      "@mode " <> mode,
+      "@owner " <> owner,
+      "@group " <> group,
+      dest,
+    ]
+    append_strings_to_plist(plist_file, lines)
+    |> result.map(fn(lines) { lines |> string.join("\n") })
+  })
+}
+
+fn append_string_to_plist(
+  file: String,
+  line: String,
+) -> Result(String, AppError) {
+  simplifile.append(file, line <> "\n")
+  |> result.map_error(UnableToAppendPlistFile(file, line, _))
+  |> result.map(fn(_) {
+    logging.log(
+      logging.Debug,
+      "[plist] appended to file: " <> file <> ", line: " <> line,
+    )
+    line
+  })
+}
+
+fn append_strings_to_plist(
+  file: String,
+  lines: List(String),
+) -> Result(List(String), AppError) {
+  lines |> list.map(append_string_to_plist(file, _)) |> result.all
 }
 
 /// Recurse src directory and process all the files in that tree, copying the dir to staging, and
@@ -727,19 +750,9 @@ fn process_plist_directory(
   owner,
   group,
 ) -> Result(String, AppError) {
-  let header =
-    "@mode "
-    <> mode
-    <> "\n"
-    <> "@owner "
-    <> owner
-    <> "\n"
-    <> "@group "
-    <> group
-    <> "\n"
+  let headers = ["@mode " <> mode, "@owner " <> owner, "@group " <> group]
 
-  simplifile.append(plist_file, header)
-  |> result.map_error(UnableToAppendPlistFile(plist_file, header, _))
+  append_strings_to_plist(plist_file, headers)
   |> result.try(fn(_) {
     let source_dir_path = case filepath.is_absolute(src_dir) {
       False -> filepath.join(app_dir, src_dir)
@@ -751,14 +764,8 @@ fn process_plist_directory(
       let start_len = string.length(source_dir_path)
       let raw_files = files |> list.map(string.drop_start(_, start_len))
       let plist_files = raw_files |> list.map(filepath.join(dest_dir, _))
-      let plist_file_list = string.join(plist_files, "\n") <> "\n"
       let staging_target_dir = filepath.join(staging_dir, dest_dir)
-      simplifile.append(plist_file, plist_file_list)
-      |> result.map_error(UnableToAppendPlistFile(
-        plist_file,
-        plist_file_list,
-        _,
-      ))
+      append_strings_to_plist(plist_file, plist_files)
       |> result.try(fn(_) {
         simplifile.copy_directory(source_dir_path, staging_target_dir)
         |> result.map_error(UnableToCopyPlistDirectory(
@@ -767,11 +774,12 @@ fn process_plist_directory(
           staging_target_dir,
           _,
         ))
-        |> result.map(fn(_) { plist_file_list })
+        |> result.map(fn(_) { plist_files })
       })
     })
     |> result.flatten
   })
+  |> result.map(fn(lines) { lines |> string.join("\n") })
 }
 
 /// Copy plist files into the staging dir.
@@ -788,7 +796,7 @@ fn copy_plist_files(
       PlistIncludeDirective(path:) ->
         process_plist_include_directive(plist_file, path)
       PlistDirDirective(path:) -> process_plist_dir_directive(plist_file, path)
-      PlistFile(src:, dest:, mode:, owner:, group:) ->
+      PlistFile(src:, dest:, mode:, owner:, group:) -> {
         process_plist_file_directive(
           app_dir,
           staging_dir,
@@ -799,6 +807,7 @@ fn copy_plist_files(
           owner,
           group,
         )
+      }
       PlistDirectory(src_dir:, dest_dir:, mode:, owner:, group:) ->
         process_plist_directory(
           app_dir,
@@ -950,12 +959,10 @@ fn new_context(config: Config) -> ctx.Value {
     ctx.Prop("pkg_prefix", ctx.Str(config.pkg_prefix)),
     ctx.Prop("pkg_proc_name", ctx.Str(config.pkg_proc_name)),
     ctx.Prop("pkg_user_name", ctx.Str(config.pkg_user_name)),
-    ctx.Prop("pkg_user_uid", ctx.Str(config.pkg_user_uid)),
     ctx.Prop("pkg_var_dir", ctx.Str(config.pkg_var_dir)),
   ]
 
   let full_prop_list = list.append(pairs_prop_list, standard_prop_list)
-
   let full_prop_list = case config.pkg_root_dir {
     Some(root_dir) ->
       [
@@ -966,6 +973,19 @@ fn new_context(config: Config) -> ctx.Value {
     _ ->
       [
         ctx.Prop("pkg_root_dir_defined", ctx.Bool(False)),
+      ]
+      |> list.append(full_prop_list)
+  }
+  let full_prop_list = case config.pkg_user_uid {
+    Some(uid) ->
+      [
+        ctx.Prop("pkg_user_uid", ctx.Str(uid)),
+        ctx.Prop("pkg_user_uid_defined", ctx.Bool(True)),
+      ]
+      |> list.append(full_prop_list)
+    _ ->
+      [
+        ctx.Prop("pkg_user_uid_defined", ctx.Bool(False)),
       ]
       |> list.append(full_prop_list)
   }
@@ -1010,23 +1030,28 @@ fn project_template(
             new_projected_template_path(template_path, staging_dir)
           let projected_template_dir_path =
             filepath.directory_name(projected_template_path)
-          let _ = case simplifile.is_directory(projected_template_dir_path) {
-            Error(e) ->
-              Error(UnableToCreateProjectTemplateDir(
-                template_path,
-                projected_template_dir_path,
-                e,
-              ))
-            Ok(False) -> {
-              simplifile.create_directory_all(projected_template_dir_path)
-              |> result.map_error(UnableToCreateProjectTemplateDir(
-                template_path,
-                projected_template_dir_path,
-                _,
-              ))
-            }
-            Ok(True) -> Ok(Nil)
-          }
+          use _ <- result.try(
+            case simplifile.is_directory(projected_template_dir_path) {
+              Ok(True) -> Ok(Nil)
+              Ok(False) -> {
+                case
+                  simplifile.create_directory_all(projected_template_dir_path)
+                {
+                  Ok(_) -> Ok(Nil)
+                  Error(e) ->
+                    Error(UnableToCreateProjectedTemplateDirectory(
+                      projected_template_dir_path,
+                      e,
+                    ))
+                }
+              }
+              Error(e) ->
+                Error(UnableToCheckForMissingProjectedTemplateDirectory(
+                  projected_template_dir_path,
+                  e,
+                ))
+            },
+          )
           case handles.run(template, context, partial_templates) {
             Error(e) ->
               Error(UnableToProjectTemplate(
@@ -1095,11 +1120,11 @@ fn build_package(
     "-o",
     output_dir,
   ]
-  io.println("command: pkg " <> args |> string.join(" "))
+  logging.log(logging.Debug, "command: pkg " <> args |> string.join(" "))
   shellout.command(run: "pkg", in: ".", with: args, opt: [])
   |> result.map_error(UnableToBuildPackage)
   |> result.try(fn(_) {
-    io.println("ls " <> output_dir)
+    logging.log(logging.Debug, "ls " <> output_dir)
     shellout.command(run: "/bin/ls", in: ".", with: [output_dir], opt: [])
     |> result.map_error(UnableToListBuiltPackages)
   })

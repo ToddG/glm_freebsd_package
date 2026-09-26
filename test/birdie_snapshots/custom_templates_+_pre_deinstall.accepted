@@ -10,6 +10,8 @@ PKG_VAR_DIR="/var/example"
 
 echo "===> PRE DEINSTALL of ${APP_NAME}"
 
+
+
 if [ -n "${PKG_ROOT_DIR}" ] && [ "${PKG_ROOT_DIR}" != "/" ]; then
   echo "===> configuring '/usr/sbin/pw' to use root dir = ${PKG_ROOT_DIR}"
   PW="/usr/sbin/pw -R ${PKG_ROOT_DIR}"
@@ -34,6 +36,8 @@ then
   echo "===> run directory '${PKG_VAR_DIR}' should be manually removed. Manual command below:"
   echo "  rm -rf ${PKG_VAR_DIR}"
 fi
+
+
 # key1=value1
 # key2=value2
 

@@ -27,12 +27,17 @@ test:
 build:
 	gleam build --target erlang
 
+.PHONY:shipment
+shipment:build
+	gleam export erlang-shipment
+
+
 .PHONY:run
 run:
 	gleam run -- --help
 
-.PHONY:freebsd_package
-freebsd_package:
+.PHONY:manual_test
+manual_test:
 	echo "this target requires FreeBSD to run"
 	rm -rf ./tmp
 	sudo service example stop || true
@@ -49,12 +54,20 @@ freebsd_package:
 bird:
 	gleam run -m birdie
 
+.PHONY:package
+package:shipment
+	# generate the single file gleescript.
+	# this uses the older way to generate the gleescript.
+	# TODO: https://gleam.run/writing-gleam/
+	# TODO: once 1.17.0 is available on FreeBSD, then replace this with
+	#     ```gleam export escript```
+	gleam run -m gleescript -- --out=./staging
+
 .PHONY:install
-install:build
-	# generate the single file escript, named as the package name in the gleam.toml
-	gleam run -m gleescript -- --out=/tmp
+install:package
+	# # generate the single file escript, named as the package name in the gleam.toml
 	# copy the escript to the installation directory, typically /usr/local/bin/glm_freebsd_package
-	sudo cp /tmp/glm_freebsd_package $(INSTALL_DIR)
+	sudo cp ./staging/glm_freebsd_package $(INSTALL_DIR)
 	# copy the default templates to a standard location, typically /usr/local/etc/glm_freebsd_package/templates
 	sudo mkdir -p $(TEMPLATES_DIR)
 	sudo cp -rv ./priv/templates $(TEMPLATES_DIR)
