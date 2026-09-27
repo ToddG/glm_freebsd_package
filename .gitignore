@@ -10,3 +10,4 @@ build
 DELETE_ME/*
 glm_freebsd
 /staging
+/priv/example/staging
