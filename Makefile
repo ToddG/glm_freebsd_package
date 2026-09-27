@@ -59,12 +59,12 @@ package:shipment
 	./bootstrap.sh $(STAGE_DIR) $(PACKAGE_DIR) $(PKG_VERSION) $(BIN_DIR) $(PREFIX_DIR) $(TEMPLATES_DIR)
 
 .PHONY:publish
-publish:package
+publish:clean package
 	sudo cp $(PACKAGE_DIR)/$(PKG_NAME)-$(PKG_VERSION).pkg $(REPO_DIR)
+	sudo pkg repo $(REPO_DIR)
 
 install:
 	sudo pkg install -y -r glbrepo $(PKG_NAME)-$(PKG_VERSION) || sudo pkg install -y ${REPO_DIR}/$(PKG_NAME)-$(PKG_VERSION).pkg
-
 
 .PHONY:manual_test
 manual_test:
