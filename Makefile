@@ -11,7 +11,7 @@ REPO_DIR := /opt/builds
 
 .PHONY:init
 init:
-	mkdir -p ${REPO_DIR}
+	sudo mkdir -p ${REPO_DIR}
 
 .PHONY:path
 path:
