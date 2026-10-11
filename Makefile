@@ -9,6 +9,10 @@ BIN_DIR := $(STAGE_DIR)/bin
 PACKAGE_DIR := ./packages
 REPO_DIR := /opt/builds
 
+.PHONY:init
+init:
+	mkdir -p ${REPO_DIR}
+
 .PHONY:path
 path:
 	echo "PATH=${PATH}"
