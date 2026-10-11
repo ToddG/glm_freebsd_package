@@ -1,4 +1,4 @@
-all: clean format check test package publish install
+all: clean format check test install
 
 PKG_NAME := glm_freebsd_package
 PKG_VERSION := 1.0.0
@@ -36,7 +36,7 @@ test:
 	gleam "test"
 
 .PHONY:build
-build:
+build:clean
 	gleam build --target erlang
 
 	# generate the single file gleescript.
@@ -63,11 +63,12 @@ package:shipment
 	./bootstrap.sh $(STAGE_DIR) $(PACKAGE_DIR) $(PKG_VERSION) $(BIN_DIR) $(PREFIX_DIR) $(TEMPLATES_DIR)
 
 .PHONY:publish
-publish:clean package
+publish:package
 	sudo cp $(PACKAGE_DIR)/$(PKG_NAME)-$(PKG_VERSION).pkg $(REPO_DIR)
 	sudo pkg repo $(REPO_DIR)
 
-install:
+.PHONY: install:
+install:publish
 	sudo pkg install -y -r glbrepo $(PKG_NAME)-$(PKG_VERSION) || sudo pkg install -y ${REPO_DIR}/$(PKG_NAME)-$(PKG_VERSION).pkg
 
 .PHONY:manual_test
