@@ -112,10 +112,11 @@ Init the app as a git repository:
 
 ### 2. Update the APPNAME/gleam.toml
 
-Add the relevant FreeBSD package info to the ./gleam.toml
+Add the relevant FreeBSD packages info to the ./gleam.toml
 
 See [this example gleam.toml](https://github.com/ToddG/glm_freebsd_package/blob/11baaee2805705182346730b43a31bfb21ad9349/priv/example/gleam.toml#L16).
 
+NOTE: everything that is optional has a default value. Unless you need to override the default values, you can omit the defaults (I do).
 ```toml
 [freebsd]
 pkg_origin = "example_company/example"
@@ -137,7 +138,6 @@ pkg_description = """
 # optional
 # pkg_root_dir = "/some/root/path/for/this/package"
 pkg_maintainer = "package_maintainer@example.com"
-# optional
 pkg_config_dir = "/tmp/example"
 # optional
 pkg_env_file = "example.env"
@@ -198,7 +198,12 @@ value = "/tmp/example_temp_dir"
 Copy this makefile to ~/apps/APPNAME/Makefile
 
 ```make
-all: format check build shipment test package
+all: clean format check build shipment test package
+
+.PHONY:clean
+clean:
+	gleam clean
+	rm -rf ./packages/*.pkg
 
 .PHONY:format
 format:
@@ -222,7 +227,8 @@ shipment:
 
 .PHONY:package
 package:
-    glm_freebsd_package
+	echo "building FreeBSD package..."
+	glm_freebsd_package
 
 ```
 
@@ -243,8 +249,8 @@ See the [Makefile](https://github.com/ToddG/glm_freebsd_package/blob/main/Makefi
 > APPNAME-1.0.0.pkg
 
 # add staging and packages to your .gitignore
-echo "/staging" >> ~/apps/APPNAME/.gitignore
-echo "/packages" >> ~/apps/APPNAME/.gitignore
+echo "/staging" >> .gitignore
+echo "/packages" >> .gitignore
 
 # install the generated package, note the default VERSION for gleam apps is 1.0.0
 # sudo pkg install -y ~/apps/APPNAME/packages/APPNAME-[VERSION]
